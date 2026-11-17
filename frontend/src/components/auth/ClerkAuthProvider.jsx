@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClerkProvider } from "@clerk/react";
 import { dark } from "@clerk/ui/themes";
+import { ptBR } from "@clerk/localizations/pt-BR";
 
 const appearance = {
   theme: dark,
@@ -48,6 +49,7 @@ export default function ClerkAuthProvider({ children }) {
       publishableKey={config.publishable_key}
       proxyUrl={config.proxy_url || undefined}
       appearance={appearance}
+      localization={ptBR}
       routerPush={(to) => navigate(to)}
       routerReplace={(to) => navigate(to, { replace: true })}
       signInUrl="/sign-in"

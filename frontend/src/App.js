@@ -17,6 +17,7 @@ import Crm from "@/pages/Crm";
 import Tasks from "@/pages/Tasks";
 import Users from "@/pages/Users";
 import Portal from "@/pages/Portal";
+import EditorialCalendar from "@/pages/EditorialCalendar";
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
               <Route path="financeiro" element={<Finance />} />
               <Route path="crm" element={<Crm />} />
               <Route path="tarefas" element={<Tasks />} />
+              <Route path="calendario" element={<EditorialCalendar />} />
               <Route path="usuarios" element={<Users />} />
             </Route>
             <Route path="/portal" element={<Protected><Portal /></Protected>} />

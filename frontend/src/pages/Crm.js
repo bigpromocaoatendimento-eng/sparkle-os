@@ -8,6 +8,7 @@ import { Kanban } from "@/components/sparkle/Kanban";
 import { FormDialog } from "@/components/sparkle/FormDialog";
 import { Button } from "@/components/ui/button";
 import { useMe, isManager } from "@/context/MeContext";
+import { ProposalDialog, ProposalList } from "@/components/sparkle/Proposal";
 
 const FIELDS = [
   { name: "name", label: "Nome do contato", required: true },
@@ -26,6 +27,7 @@ export default function Crm() {
   const { me } = useMe();
   const [items, setItems] = useState([]);
   const [edit, setEdit] = useState(null);
+  const [proposalLead, setProposalLead] = useState(null);
   const load = useCallback(() => api.get("/leads").then(setItems), [api]);
   useEffect(() => { load(); }, [load]);
   const move = async (lead, stage) => {
@@ -58,11 +60,15 @@ export default function Crm() {
         </button>
       )} />
       <FormDialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)} title={edit?.id ? "Editar lead" : "Novo lead"} fields={FIELDS} initial={edit} onSubmit={save} prefix="lead-form" extra={edit?.id && (
-        <div className="flex flex-wrap gap-2 border-t border-[#003459] pt-4">
+        <div className="space-y-4 border-t border-[#003459] pt-4">
+          <ProposalList api={api} lead={edit} onNew={() => { setProposalLead(edit); setEdit(null); }} />
+          <div className="flex flex-wrap gap-2">
           {edit.stage !== "ganho" && <Button type="button" size="sm" onClick={() => convert(edit)} data-testid="lead-convert-button" className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white"><UserPlus className="h-4 w-4 mr-1" /> Converter em cliente</Button>}
           {isManager(me) && <Button type="button" size="sm" variant="ghost" onClick={() => remove(edit)} data-testid="lead-delete-button" className="rounded-full text-red-300">Excluir</Button>}
+          </div>
         </div>
       )} />
+      <ProposalDialog open={!!proposalLead} onOpenChange={(o) => !o && setProposalLead(null)} api={api} lead={proposalLead} onCreated={load} />
     </div>
   );
 }

@@ -11,7 +11,9 @@ from typing import List, Optional
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Response
+import hmac
+from zoneinfo import ZoneInfo
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Response, Request, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
@@ -25,6 +27,12 @@ try:  # launched as `backend.server` (the default)
     from backend.clerk_auth import clerk_router, require_user
 except ModuleNotFoundError:  # launched from inside backend/ as `server`
     from clerk_auth import clerk_router, require_user
+try:
+    from backend.emails import send_email, approval_email, invoice_email, EmailError
+    from backend.proposals_pdf import build_proposal_pdf, brl as pdf_brl
+except ModuleNotFoundError:
+    from emails import send_email, approval_email, invoice_email, EmailError
+    from proposals_pdf import build_proposal_pdf, brl as pdf_brl
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -36,8 +44,11 @@ INDEXES: dict[str, list[IndexModel]] = {
     name: [IndexModel([("id", ASCENDING)], name="id", unique=True),
            IndexModel([("created_at", DESCENDING)], name="created_desc"),
            IndexModel([("client_id", ASCENDING)], name="client_id")]
-    for name in ["clients", "services", "contracts", "transactions", "leads", "tasks", "files"]
+    for name in ["clients", "services", "contracts", "transactions", "leads", "tasks", "files", "proposals", "email_log"]
 }
+INDEXES["proposals"].append(IndexModel([("lead_id", ASCENDING)], name="lead_id"))
+INDEXES["tasks"].append(IndexModel([("publish_date", ASCENDING)], name="publish_date"))
+INDEXES["cron_runs"] = [IndexModel([("run_id", ASCENDING)], name="run_id", unique=True)]
 INDEXES["users"] = [IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
                     IndexModel([("email", ASCENDING)], name="email")]
 
@@ -183,25 +194,54 @@ class TaskIn(BaseModel):
     priority: str = "media"
     assignee: str = ""
     due_date: str = ""
+    publish_date: str = ""
+    channel: str = ""
+    content_type: str = ""
+
+
+class ProposalItem(BaseModel):
+    service_id: str = ""
+    name: str = Field(min_length=1)
+    price: float = 0
+    billing: str = "mensal"
+    qty: int = Field(1, ge=1)
+
+
+class ProposalIn(BaseModel):
+    lead_id: str = Field(min_length=1)
+    title: str = "Proposta de serviços"
+    intro: str = ""
+    items: List[ProposalItem] = Field(min_length=1)
+    discount: float = Field(0, ge=0, le=100)
+    validity_days: int = Field(15, ge=1, le=365)
+    notes: str = ""
+    status: str = "rascunho"
+
+
+AFTER_SAVE: dict = {}
 
 
 def register_crud(name: str, model, read_roles, write_roles, delete_roles):
     @api_router.get(f"/{name}", name=f"list_{name}")
-    async def list_items(client_id: Optional[str] = None, member: dict = Depends(require_role(*read_roles))):
-        query = {"client_id": client_id} if client_id else {}
+    async def list_items(client_id: Optional[str] = None, lead_id: Optional[str] = None,
+                         member: dict = Depends(require_role(*read_roles))):
+        query = {k: v for k, v in (("client_id", client_id), ("lead_id", lead_id)) if v}
         return await db[name].find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
 
     @api_router.post(f"/{name}", name=f"create_{name}")
-    async def create_item(body: model, member: dict = Depends(require_role(*write_roles))):
+    async def create_item(body: model, request: Request, bg: BackgroundTasks, member: dict = Depends(require_role(*write_roles))):
         doc = {**body.model_dump(), "id": str(uuid.uuid4()), "created_at": now_iso(), "created_by": member["user_id"]}
         if name == "tasks":
             doc["feedback"] = []
         await db[name].insert_one(doc)
         doc.pop("_id", None)
+        if name in AFTER_SAVE:
+            await AFTER_SAVE[name](None, doc, public_base(request), bg)
         return doc
 
     @api_router.patch(f"/{name}/{{item_id}}", name=f"update_{name}")
-    async def update_item(item_id: str, body: dict = Body(...), member: dict = Depends(require_role(*write_roles))):
+    async def update_item(item_id: str, request: Request, bg: BackgroundTasks, body: dict = Body(...),
+                          member: dict = Depends(require_role(*write_roles))):
         existing = await db[name].find_one({"id": item_id}, {"_id": 0})
         if not existing:
             raise HTTPException(status_code=404, detail="Não encontrado")
@@ -209,8 +249,11 @@ def register_crud(name: str, model, read_roles, write_roles, delete_roles):
         merged = {k: existing.get(k) for k in fields if k in existing}
         merged.update({k: v for k, v in body.items() if k in fields})
         clean = model.model_validate(merged).model_dump()
-        return await db[name].find_one_and_update({"id": item_id}, {"$set": {**clean, "updated_at": now_iso()}},
-                                                  projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+        doc = await db[name].find_one_and_update({"id": item_id}, {"$set": {**clean, "updated_at": now_iso()}},
+                                                 projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+        if name in AFTER_SAVE:
+            await AFTER_SAVE[name](existing, doc, public_base(request), bg)
+        return doc
 
     @api_router.delete(f"/{name}/{{item_id}}", name=f"delete_{name}")
     async def delete_item(item_id: str, member: dict = Depends(require_role(*delete_roles))):
@@ -229,6 +272,140 @@ register_crud("contracts", ContractIn, MANAGERS, MANAGERS, MANAGERS)
 register_crud("transactions", TransactionIn, MANAGERS, MANAGERS, MANAGERS)
 register_crud("leads", LeadIn, STAFF, STAFF, MANAGERS)
 register_crud("tasks", TaskIn, STAFF, STAFF, MANAGERS)
+register_crud("proposals", ProposalIn, STAFF, STAFF, MANAGERS)
+
+
+# ---------------- Email notifications ----------------
+SP_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+def public_base(request: Request) -> str:
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host", "")).split(",")[0].strip()
+    return f"https://{host}"
+
+
+def fmt_br(d: str) -> str:
+    return f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d) >= 10 else d
+
+
+async def deliver(kind: str, to: str, subject: str, html: str, ref_id: str, client_id: str = "") -> bool:
+    log = {"id": str(uuid.uuid4()), "kind": kind, "to": to, "subject": subject, "ref_id": ref_id,
+           "client_id": client_id, "created_at": now_iso()}
+    try:
+        log["email_id"] = await send_email(to=to, subject=subject, html=html)
+        log["status"] = "enviado"
+    except (EmailError, ValueError) as e:
+        log["status"], log["error"] = "falhou", str(e)
+    await db.email_log.insert_one(log)
+    return log["status"] == "enviado"
+
+
+async def notify_approval(task: dict, base: str):
+    client_doc = await db.clients.find_one({"id": task.get("client_id")}, {"_id": 0})
+    if not client_doc or not client_doc.get("email"):
+        return
+    subject, html = approval_email(client_doc["name"], task["title"], task.get("description", ""), f"{base}/portal")
+    await deliver("aprovacao", client_doc["email"], subject, html, task["id"], client_doc["id"])
+
+
+async def task_after_save(old: Optional[dict], new: dict, base: str, bg: BackgroundTasks):
+    if new.get("stage") == "aprovacao" and (old or {}).get("stage") != "aprovacao" and new.get("client_id"):
+        bg.add_task(notify_approval, new, base)
+
+
+async def proposal_after_save(old: Optional[dict], new: dict, base: str, bg: BackgroundTasks):
+    if old is None:
+        await db.leads.update_one({"id": new["lead_id"], "stage": {"$in": ["novo", "qualificacao"]}}, {"$set": {"stage": "proposta"}})
+
+
+AFTER_SAVE.update({"tasks": task_after_save, "proposals": proposal_after_save})
+
+
+async def run_invoice_reminders(base: str) -> dict:
+    today = datetime.now(SP_TZ).date()
+    targets = {today.isoformat(): "d0", (today + timedelta(days=3)).isoformat(): "d3"}
+    txs = await db.transactions.find({"type": "receber", "status": "pendente", "due_date": {"$in": list(targets)}},
+                                     {"_id": 0}).to_list(2000)
+    sent = skipped = 0
+    for t in txs:
+        key = f"{targets[t['due_date']]}:{t['due_date']}"
+        if key in t.get("reminders_sent", []) or not t.get("client_id"):
+            skipped += 1
+            continue
+        c = await db.clients.find_one({"id": t["client_id"]}, {"_id": 0})
+        if not c or not c.get("email"):
+            skipped += 1
+            continue
+        subject, html = invoice_email(c["name"], t["description"], pdf_brl(t["amount"]), fmt_br(t["due_date"]),
+                                      targets[t["due_date"]] == "d0", f"{base}/portal")
+        if await deliver("fatura", c["email"], subject, html, t["id"], c["id"]):
+            await db.transactions.update_one({"id": t["id"]}, {"$addToSet": {"reminders_sent": key}})
+            sent += 1
+    logger.info("invoice reminders: sent=%s skipped=%s", sent, skipped)
+    return {"sent": sent, "skipped": skipped}
+
+
+@api_router.post("/cron/invoice-reminders")
+async def cron_invoice_reminders(request: Request, bg: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    auth = request.headers.get("authorization", "")
+    token = auth[7:] if auth.lower().startswith("bearer ") else ""
+    if not secret or not token or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        envelope = await request.json()
+    except Exception:
+        envelope = None
+    if envelope is not None and not isinstance(envelope, dict):
+        raise HTTPException(status_code=400, detail="Invalid body")
+    run_id = request.headers.get("x-webhook-id") or (envelope or {}).get("run_id") or str(uuid.uuid4())
+    try:
+        await db.cron_runs.insert_one({"run_id": run_id, "job": "invoice-reminders", "created_at": now_iso()})
+    except Exception:
+        return {"ok": True, "duplicate": True}
+    bg.add_task(run_invoice_reminders, public_base(request))
+    return {"ok": True, "accepted": run_id}
+
+
+@api_router.post("/notifications/invoice-reminders/run")
+async def run_reminders_now(request: Request, member: dict = Depends(require_role(*MANAGERS))):
+    return await run_invoice_reminders(public_base(request))
+
+
+@api_router.post("/tasks/{task_id}/notify")
+async def resend_approval(task_id: str, request: Request, member: dict = Depends(require_role(*STAFF))):
+    task = await db.tasks.find_one({"id": task_id}, {"_id": 0})
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    if task.get("stage") != "aprovacao":
+        raise HTTPException(status_code=409, detail="A tarefa não está em aprovação")
+    c = await db.clients.find_one({"id": task.get("client_id")}, {"_id": 0})
+    if not c or not c.get("email"):
+        raise HTTPException(status_code=422, detail="Cliente sem e-mail cadastrado")
+    subject, html = approval_email(c["name"], task["title"], task.get("description", ""), f"{public_base(request)}/portal")
+    if not await deliver("aprovacao", c["email"], subject, html, task["id"], c["id"]):
+        raise HTTPException(status_code=502, detail="Não foi possível enviar o e-mail")
+    return {"ok": True}
+
+
+@api_router.get("/notifications")
+async def list_notifications(member: dict = Depends(require_role(*MANAGERS))):
+    return await db.email_log.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+# ---------------- Proposal PDF ----------------
+@api_router.get("/proposals/{proposal_id}/pdf")
+async def proposal_pdf(proposal_id: str, member: dict = Depends(require_role(*STAFF))):
+    p = await db.proposals.find_one({"id": proposal_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposta não encontrada")
+    lead = await db.leads.find_one({"id": p["lead_id"]}, {"_id": 0}) or {"name": "Cliente"}
+    ids = [i.get("service_id") for i in p.get("items", []) if i.get("service_id")]
+    svcs = await db.services.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "deliverables": 1}).to_list(100)
+    pdf = await run_in_threadpool(build_proposal_pdf, p, lead, {s["id"]: s.get("deliverables", []) for s in svcs})
+    fname = f"Proposta-Sparkle-{p['id'][:6].upper()}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
 
 # ---------------- Me & Users ----------------
@@ -516,9 +693,9 @@ async def seed():
     if await db.clients.count_documents({}) == 0:
         today = date.today()
         clients = [
-            ClientIn(name="Café Aurora (exemplo)", company="Aurora Cafés Especiais", email="contato@cafeaurora.com.br", phone="(11) 98888-1001", segment="Alimentação", status="ativo", monthly_fee=4500, account_manager="Equipe Sparkle", notes="Dados de exemplo — edite ou exclua."),
-            ClientIn(name="Clínica Vitalis (exemplo)", company="Vitalis Saúde Integrada", email="marketing@vitalis.com.br", phone="(11) 97777-2002", segment="Saúde", status="ativo", monthly_fee=6200, account_manager="Equipe Sparkle", notes="Dados de exemplo — edite ou exclua."),
-            ClientIn(name="Studio Norte (exemplo)", company="Studio Norte Arquitetura", email="ola@studionorte.com.br", phone="(21) 96666-3003", segment="Arquitetura", status="prospeccao", monthly_fee=0, notes="Dados de exemplo — edite ou exclua."),
+            ClientIn(name="Café Aurora (exemplo)", company="Aurora Cafés Especiais", email="delivered@resend.dev", phone="(11) 98888-1001", segment="Alimentação", status="ativo", monthly_fee=4500, account_manager="Equipe Sparkle", notes="Dados de exemplo — edite ou exclua."),
+            ClientIn(name="Clínica Vitalis (exemplo)", company="Vitalis Saúde Integrada", email="delivered@resend.dev", phone="(11) 97777-2002", segment="Saúde", status="ativo", monthly_fee=6200, account_manager="Equipe Sparkle", notes="Dados de exemplo — edite ou exclua."),
+            ClientIn(name="Studio Norte (exemplo)", company="Studio Norte Arquitetura", email="delivered@resend.dev", phone="(21) 96666-3003", segment="Arquitetura", status="prospeccao", monthly_fee=0, notes="Dados de exemplo — edite ou exclua."),
         ]
         docs = [{**c.model_dump(), "id": str(uuid.uuid4()), "created_at": now_iso(), "created_by": "seed"} for c in clients]
         await db.clients.insert_many([dict(d) for d in docs])
@@ -549,6 +726,16 @@ async def seed():
             LeadIn(name="Carlos Mendes", company="Mendes Fitness", email="carlos@mendesfit.com", source="google", stage="negociacao", value=4100),
         ]
         await db.leads.insert_many([{**l.model_dump(), "id": str(uuid.uuid4()), "created_at": now_iso(), "created_by": "seed"} for l in leads])
+
+    aurora = await db.clients.find_one({"name": {"$regex": "Aurora"}, "created_by": "seed"}, {"id": 1})
+    if aurora and await db.tasks.count_documents({"publish_date": {"$nin": ["", None]}}) == 0:
+        base = date.today()
+        posts = [("Post: bastidores da torra", "instagram", "post", 2, "criacao"), ("Reels: receita de café gelado", "instagram", "reels", 5, "briefing"),
+                 ("Carrossel: 5 métodos de preparo", "instagram", "carrossel", 9, "briefing"), ("Artigo: origem dos grãos", "blog", "artigo", 12, "briefing"),
+                 ("Story: promoção de fim de semana", "instagram", "story", 15, "briefing"), ("Post LinkedIn: parceria com produtores", "linkedin", "post", 19, "briefing")]
+        await db.tasks.insert_many([{**TaskIn(title=t, client_id=aurora["id"], stage=st, channel=ch, content_type=ct, priority="media",
+                                              publish_date=(base + timedelta(days=dd)).isoformat(), due_date=(base + timedelta(days=dd - 1)).isoformat()).model_dump(),
+                                     "feedback": [], "id": str(uuid.uuid4()), "created_at": now_iso(), "created_by": "seed"} for t, ch, ct, dd, st in posts])
 
 
 app.include_router(api_router)

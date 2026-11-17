@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useMe } from "@/context/MeContext";
 import { downloadFile } from "./ClientDetail";
+import { MonthCalendar, MonthNav } from "@/components/sparkle/MonthCalendar";
 
 function ApprovalCard({ t, onDone, api }) {
   const [comment, setComment] = useState("");
@@ -32,6 +33,21 @@ function ApprovalCard({ t, onDone, api }) {
           : <Button size="sm" variant="outline" onClick={() => setMode("changes")} data-testid={`portal-request-changes-${t.id}`} className="rounded-full border-[#FFB703]/40 bg-transparent text-[#FFB703]"><PenLine className="h-4 w-4 mr-1" /> Solicitar alteração</Button>}
       </div>
     </div>
+  );
+}
+
+function PortalCalendar({ tasks }) {
+  const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const posts = tasks.filter((t) => t.publish_date);
+  if (!posts.length) return null;
+  return (
+    <section className="mt-10" data-testid="portal-calendar">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-semibold text-white">Calendário de conteúdo</h2>
+        <MonthNav month={month} setMonth={setMonth} prefix="portal-calendar" />
+      </div>
+      <MonthCalendar month={month} items={posts} prefix="portal-calendar" />
+    </section>
   );
 }
 
@@ -106,6 +122,8 @@ export default function Portal() {
             {pending.length === 0 ? <Empty text="Nada aguardando sua aprovação." testid="portal-no-approvals" /> : pending.map((t) => <ApprovalCard key={t.id} t={t} api={api} onDone={load} />)}
           </div>
         </section>
+
+        <PortalCalendar tasks={d.tasks} />
 
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <Panel className="p-6" data-testid="portal-timeline">

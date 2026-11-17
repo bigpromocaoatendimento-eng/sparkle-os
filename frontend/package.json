@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@clerk/localizations": "4.25.0",
     "@clerk/react": "6.17.0",
     "@clerk/ui": "1.38.1",
     "@hookform/resolvers": "5.0.1",

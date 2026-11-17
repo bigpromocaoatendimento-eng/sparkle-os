@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, CheckCircle2 } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, BellRing } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
 import { useApi, errMsg } from "@/lib/api";
 import { brl, fmtDate, LABELS, opts, txStatus, today } from "@/lib/format";
@@ -10,7 +10,28 @@ import { Button } from "@/components/ui/button";
 import { ManagerOnly } from "@/components/sparkle/ManagerOnly";
 
 const monthLabel = (m) => new Date(`${m}-15`).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-const TABS = [["receber", "Contas a receber"], ["pagar", "Contas a pagar"], ["fluxo", "Fluxo de caixa"]];
+const TABS = [["receber", "Contas a receber"], ["pagar", "Contas a pagar"], ["fluxo", "Fluxo de caixa"], ["emails", "E-mails enviados"]];
+
+function EmailLog({ api, refreshKey }) {
+  const [items, setItems] = useState([]);
+  useEffect(() => { api.get("/notifications").then(setItems).catch(() => {}); }, [api, refreshKey]);
+  return (
+    <Panel className="overflow-x-auto" data-testid="email-log">
+      <table className="w-full text-sm">
+        <thead className="text-left text-xs uppercase tracking-wider text-slate-400"><tr className="border-b border-[#003459]"><th className="p-4">Quando</th><th className="p-4">Tipo</th><th className="p-4">Para</th><th className="p-4 hidden md:table-cell">Assunto</th><th className="p-4">Status</th></tr></thead>
+        <tbody>{items.map((e) => (
+          <tr key={e.id} className="border-b border-[#003459]/60" data-testid={`email-log-row-${e.id}`}>
+            <td className="p-4 text-slate-400 whitespace-nowrap">{new Date(e.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</td>
+            <td className="p-4">{e.kind === "fatura" ? "Lembrete de fatura" : "Aprovação"}</td>
+            <td className="p-4 text-slate-300">{e.to}</td>
+            <td className="p-4 hidden md:table-cell text-slate-300">{e.subject}</td>
+            <td className="p-4"><StatusBadge value={e.status === "enviado" ? "pago" : "atrasado"} label={e.status === "enviado" ? "Enviado" : "Falhou"} /></td>
+          </tr>))}</tbody>
+      </table>
+      {items.length === 0 && <Empty text="Nenhum e-mail enviado ainda. Lembretes saem todo dia às 9h (3 dias antes e no dia do vencimento)." testid="email-log-empty" />}
+    </Panel>
+  );
+}
 
 function CashFlow({ items }) {
   const data = useMemo(() => {
@@ -53,6 +74,11 @@ function Finance() {
   const [clients, setClients] = useState([]);
   const [tab, setTab] = useState("receber");
   const [edit, setEdit] = useState(null);
+  const [logKey, setLogKey] = useState(0);
+  const remind = async () => {
+    try { const r = await api.post("/notifications/invoice-reminders/run"); toast.success(r.sent ? `${r.sent} lembrete(s) enviado(s)` : "Nenhuma fatura vence hoje ou em 3 dias (ou já foi lembrada)"); setLogKey((k) => k + 1); }
+    catch (e) { toast.error(errMsg(e)); }
+  };
   const load = useCallback(() => { api.get("/transactions").then(setItems).catch(() => {}); api.get("/clients").then(setClients).catch(() => {}); }, [api]);
   useEffect(() => { load(); }, [load]);
   const cname = Object.fromEntries(clients.map((c) => [c.id, c.name]));
@@ -77,6 +103,7 @@ function Finance() {
   return (
     <div>
       <PageHeader eyebrow="Gestão financeira" title="Financeiro" description="Contas a receber, contas a pagar e fluxo de caixa da agência.">
+        <Button variant="outline" onClick={remind} data-testid="finance-send-reminders-button" className="rounded-full border-[#003459] bg-transparent"><BellRing className="h-4 w-4 mr-1" /> Enviar lembretes agora</Button>
         <Button onClick={() => setEdit({ type: tab === "pagar" ? "pagar" : "receber", status: "pendente", due_date: today() })} data-testid="finance-add-button" className="rounded-full bg-[#EB7300] hover:bg-[#D16600] text-white"><Plus className="h-4 w-4 mr-1" /> Novo lançamento</Button>
       </PageHeader>
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -87,7 +114,7 @@ function Finance() {
       <div className="mb-4 inline-flex rounded-full border border-[#003459] bg-[#002138] p-1">
         {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} data-testid={`finance-tab-${k}`} className={`rounded-full px-4 py-1.5 text-sm transition-colors ${tab === k ? "bg-[#EB7300] text-white" : "text-slate-400 hover:text-white"}`}>{l}</button>)}
       </div>
-      {tab === "fluxo" ? <CashFlow items={items} /> : (
+      {tab === "emails" ? <EmailLog api={api} refreshKey={logKey} /> : tab === "fluxo" ? <CashFlow items={items} /> : (
         <Panel className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="finance-table">
             <thead className="text-left text-xs uppercase tracking-wider text-slate-400"><tr className="border-b border-[#003459]">

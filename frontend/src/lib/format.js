@@ -25,3 +25,8 @@ export const opts = (keys) => keys.map((k) => ({ value: k, label: LABELS[k] || k
 
 export const LEAD_STAGES = ["novo", "qualificacao", "proposta", "negociacao", "ganho", "perdido"];
 export const TASK_STAGES = ["briefing", "criacao", "revisao", "aprovacao", "concluido"];
+
+export const CHANNELS = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", blog: "Blog", email: "E-mail marketing" };
+export const CONTENT_TYPES = { post: "Post", carrossel: "Carrossel", reels: "Reels / Vídeo", story: "Story", artigo: "Artigo", anuncio: "Anúncio" };
+export const CHANNEL_COLORS = { instagram: "#EB7300", facebook: "#94BAC4", linkedin: "#60a5fa", tiktok: "#FFB703", youtube: "#f87171", blog: "#34d399", email: "#c4b5fd" };
+export const toOpts = (obj) => Object.entries(obj).map(([value, label]) => ({ value, label }));

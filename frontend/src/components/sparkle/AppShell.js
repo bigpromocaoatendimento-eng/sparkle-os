@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Navigate, Outlet, Link } from "react-router-dom";
 import { UserButton } from "@clerk/react";
-import { LayoutDashboard, Users, Package, FileSignature, Wallet, Target, KanbanSquare, MonitorSmartphone, ShieldCheck, Menu, X, Globe } from "lucide-react";
+import { LayoutDashboard, Users, Package, FileSignature, Wallet, Target, KanbanSquare, MonitorSmartphone, ShieldCheck, Menu, X, Globe, CalendarDays } from "lucide-react";
 import { Logo } from "./Logo";
 import { useMe, isStaff } from "@/context/MeContext";
 import { LABELS } from "@/lib/format";
@@ -11,6 +11,7 @@ const NAV = [
   { to: "/app/clientes", label: "Clientes", icon: Users, roles: ["admin", "gerente", "criativo"] },
   { to: "/app/crm", label: "CRM", icon: Target, roles: ["admin", "gerente", "criativo"] },
   { to: "/app/tarefas", label: "Produção", icon: KanbanSquare, roles: ["admin", "gerente", "criativo"] },
+  { to: "/app/calendario", label: "Calendário", icon: CalendarDays, roles: ["admin", "gerente", "criativo"] },
   { to: "/app/servicos", label: "Serviços", icon: Package, roles: ["admin", "gerente", "criativo"] },
   { to: "/app/contratos", label: "Contratos", icon: FileSignature, roles: ["admin", "gerente"] },
   { to: "/app/financeiro", label: "Financeiro", icon: Wallet, roles: ["admin", "gerente"] },

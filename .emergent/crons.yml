@@ -1,0 +1,9 @@
+crons:
+  - name: invoice-reminders
+    description: "Envia lembretes de fatura aos clientes 3 dias antes e no dia do vencimento, às 9h"
+    cron: "0 9 * * *"
+    timezone: "America/Sao_Paulo"
+    endpoint: "{{BASE_URL}}/api/cron/invoice-reminders"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true
