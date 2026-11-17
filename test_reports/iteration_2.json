@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 2: tested the portal email-match bug fix, ClientIn email normalization, portal-access panel, Clerk ptBR, editorial calendar, publish fields on tasks, approval emails, invoice reminders + cron, CRM proposals + PDF, and the portal content calendar. Backend: 11/11 new pytest tests pass (test_iteration2_features.py) and the iter-1 regression suite passes (27 passed, 1 skipped). Frontend (Playwright, Clerk ticket login): every requested flow works with no page errors. The user-reported bug is fixed: an unlinked cliente sees the no-client screen with their email; after admin creates a client with 'x@y.com; CONTATO+clerk_test@CafeAurora.com.br', clicking 'Verificar novamente' shows that client's portal and client_id is auto-saved. The cliente was re-linked to Café Aurora afterwards. No critical bugs. A few minor issues and risks are listed below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "emails.send_email / notify_approval / run_invoice_reminders / resend_approval", "issue": "ClientIn now normalizes a multi-address email field to 'a@x.com, b@y.com', but deliver() passes client_doc['email'] as ONE recipient: payload {'to': [to]} -> ['a@x.com, b@y.com']. For clients with several addresses (the case this bug fix targets), approval and invoice emails will probably fail (logged as 'falhou'), or the resend endpoint will return 502. Not executed because only delivered@resend.dev may receive email. Fix: split on ', ' and send a list (or just the first address)."},
+      {"endpoint": "_portal_client_id", "issue": "Once a cliente is auto-linked by email, client_id persists. If the admin later removes or changes that email on the client, the user keeps access. If two clients share an email, find_one picks one arbitrarily. Consider re-validating or showing a warning in the Users UI."},
+      {"endpoint": "run_invoice_reminders", "issue": "No atomic claim: the cron run and a manual 'Enviar lembretes agora' running at the same time can both send before $addToSet. Use find_one_and_update with reminders_sent $ne key before sending."},
+      {"endpoint": "GET /api/proposals (criativo)", "issue": "Proposals (prices/discounts) can be read by criativo, while contracts and transactions are restricted to managers. Confirm this is intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EditorialCalendar 'Novo post' button", "issue": "Default publish_date uses new Date().toISOString().slice(0,10), which is the UTC date. After 21:00 in Brasília it pre-fills tomorrow. Use local date formatting (like iso() in MonthCalendar).", "selector": "[data-testid='calendar-add-button']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Calendar month title (calendar + portal)", "issues": ["CSS 'capitalize' renders 'Novembro De 2026'. Capitalize only the first letter ('Novembro de 2026')."]},
+      {"screen": "Post/Task form", "issues": ["Native date inputs show the US 'mm/dd/yyyy' format in a pt-BR app. Use the shadcn Calendar/Popover (still open from iteration 1)."]},
+      {"screen": "Kanban card", "issues": ["A long title with no spaces ('TEST_UI_post_calendar') overlaps the priority badge; add break-words/min-w-0. Cards show due_date but not publish_date/channel for posts."]},
+      {"screen": "Sign-in", "issues": ["Clerk API error banners stay in English (e.g. 'This sign in token has already been used'); the rest of the widget is correctly in pt-BR."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration2_features.py", "/app/backend/tests/test_sparkle_api.py", "/app/test_reports/pytest/pytest_iter2.xml"],
+  "action_items": [
+    "Send emails to every address in the normalized client email list (split ', '), not one comma-joined string",
+    "Make invoice reminder sending atomic (claim reminders_sent before sending)",
+    "Use the local date (not UTC) for the default publish_date of 'Novo post'",
+    "Fix the month title capitalization ('Novembro de 2026')",
+    "Optional: show publish_date/channel on kanban cards; fix title overflow over the priority badge"
+  ],
+  "critical_code_review_comments": [
+    "server.py deliver(): 'to' may contain several comma-separated addresses after ClientIn normalization -> send_email payload {'to':[to]} is wrong",
+    "server.py run_invoice_reminders(): check-then-send race between cron and manual run",
+    "server.py _portal_client_id(): stale auto-link is never re-validated against the client's current email",
+    "server.py is 794 lines (>700); consider splitting into routers (crud, notifications, portal, proposals, seed)"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration2_features.py"],
+  "success_rate": {"backend": "100% (11/11 new + 27/27 regression)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. Every TEST_ record created (clients, tasks, leads, proposals, transactions) was deleted by id. Cliente test user re-linked to Café Aurora (exemplo) (verified). Left behind because there is no delete API: email_log entries (all sent to delivered@resend.dev) and cron_runs entries with TEST_ run ids. Seed and real data (Allan Braga, bigpromocao user) were not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Clerk tickets are SINGLE-USE: re-run `python /app/scripts/clerk_test_users.py` before each browser session. Run pytest with -n0 (tests unlink/relink the cliente user and must not run in parallel with portal tests). test_iteration2_features.py really sends emails to delivered@resend.dev (approval + invoice). The current date in the env is Nov 2026; the seeded posts span Nov 19 to Dec 6.",
+  "rca of the issue": "User bug 'Ainda não encontramos uma conta de cliente vinculada ao seu e-mail': before the fix, the email was used unescaped in an anchored $regex ('+' and '.' are regex metacharacters) and only exact single-address values matched. The fix uses re.escape plus a delimiter-aware, case-insensitive regex, normalizes the stored email, and auto-saves client_id. Verified via API and UI with a mixed-case, semicolon-separated list containing a '+' address."
+}
