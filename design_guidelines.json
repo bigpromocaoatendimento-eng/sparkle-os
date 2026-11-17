@@ -1,0 +1,71 @@
+{
+  "project_identity": {
+    "name": "Sparkle OS - Agência Sparkle",
+    "tagline": "Inovação que conecta",
+    "app_type": "hybrid_fullstack",
+    "language": "pt-BR",
+    "logo_url": "https://customer-assets-jt897jd0.emergentagent.net/job_c23d2843-1fde-450a-98b4-210f81670a64/artifacts/e182e7a799b30d20_image%20%281%29.png"
+  },
+  "colors": {
+    "background_dark_navy": "#001524",
+    "surface_navy_card": "#002138",
+    "surface_navy_border": "#003459",
+    "primary_orange": "#EB7300",
+    "primary_orange_hover": "#D16600",
+    "accent_golden_yellow": "#FFB703",
+    "accent_dusty_blue": "#94BAC4",
+    "text_primary_light": "#F8FAFC",
+    "text_secondary_muted": "#94A3B8",
+    "surface_light": "#F8FAFC",
+    "card_light": "#FFFFFF",
+    "border_light": "#E2E8F0"
+  },
+  "typography": {
+    "display_font": "Marcellus SC, Libre Baskerville, serif",
+    "body_font": "Plus Jakarta Sans, sans-serif",
+    "font_imports": [
+      "https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Marcellus+SC&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    ],
+    "heading_h1": "font-['Marcellus_SC'] text-4xl sm:text-5xl font-bold tracking-tight text-white",
+    "heading_h2": "font-['Marcellus_SC'] text-2xl sm:text-3xl font-bold text-white",
+    "heading_h3": "font-['Plus_Jakarta_Sans'] text-xl font-semibold text-slate-100",
+    "body_text": "font-['Plus_Jakarta_Sans'] text-base text-slate-300 leading-relaxed"
+  },
+  "image_urls": {
+    "logo": "https://customer-assets-jt897jd0.emergentagent.net/job_c23d2843-1fde-450a-98b4-210f81670a64/artifacts/e182e7a799b30d20_image%20%281%29.png",
+    "hero_banner": "https://images.unsplash.com/photo-1765371515218-0a4c992ba8e2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwyfHxkaWdpdGFsJTIwbWFya2V0aW5nJTIwY3JlYXRpdmUlMjBhZ2VuY3klMjB3b3Jrc3BhY2UlMjBicmFzaWx8ZW58MHx8fHwxNzk0ODg5ODg1fDA&ixlib=rb-4.1.0&q=85",
+    "team_office": "https://images.unsplash.com/photo-1622675363311-3e1904dc1885?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwzfHxjcmVhdGl2ZSUyMGFnZW5jeSUyMG9mZmljZSUyMHRlYW0lMjBtZWV0aW5nJTIwaGlnaCUyMHF1YWxpdHl8ZW58MHx8fHwxNzk0ODg5ODg1fDA&ixlib=rb-4.1.0&q=85",
+    "workspace_modern": "https://images.pexels.com/photos/6476808/pexels-photo-6476808.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "strategy_meeting": "https://images.pexels.com/photos/8117415/pexels-photo-8117415.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  },
+  "layout_and_navigation": {
+    "public_site_header": "Sticky navbar with dark navy backdrop-blur (bg-[#001524]/90 backdrop-blur-md), containing Sparkle logo, navigation links (Home, Serviços, Sobre, Contato), and 'Acessar Sparkle OS' CTA button.",
+    "app_sidebar": "Fixed sidebar on dark navy background (#001524) with border-r border-[#003459], module switching for Dashboard, Clientes, Serviços, Contratos, Financeiro, CRM, Tarefas, Portal do Cliente, Usuários.",
+    "header_overlay_rule": "NEVER use complete transparent backgrounds for dropdowns, popovers, or floating menus. Always set a solid or blur-backed background (e.g. bg-[#002138] border border-[#003459] shadow-xl)."
+  },
+  "modules_guidelines": {
+    "dashboard": "KPI cards with monthly revenue, active clients, open leads, pending tasks, accounts receivable/payable, accompanied by revenue vs expense charts and quick actions.",
+    "clientes": "Data table with search, status filters (Ativo, Inativo, Em prospecção), add/edit modals, and detailed client file view with attachment uploads.",
+    "servicos": "Catalog cards showcasing agency packages (Performance, Branding, Social Media, Full Service) with pricing and deliverable tags.",
+    "contratos": "List and status tracker for client contracts with PDF preview/download, values, start/end dates, and renewal status.",
+    "financeiro": "Tabbed view for Contas a Receber, Contas a Pagar, and Cash Flow (Fluxo de Caixa) chart with status badges (Pago, Pendente, Atrasado).",
+    "crm": "Interactive Kanban pipeline with stages (Novo Lead, Qualificação, Proposta, Negociação, Fechado/Ganho, Perdido) and lead modal.",
+    "tarefas": "Kanban & list board for creative production (Briefing, Em Criação, Revisão Interna, Aprovação Cliente, Concluído).",
+    "portal_do_cliente": "Dedicated client view with branded header, project timeline, task approval buttons (Aprovar / Solicitar Alteração), files, and invoice history.",
+    "usuarios": "User management with roles (Admin, Gerente de Conta, Criativo, Cliente) and permission toggles.",
+    "site_institucional": "High-conversion public landing page featuring Hero with star badge, Services breakdown, Case studies, About us section, and a Contact form that directly creates CRM leads."
+  },
+  "testing_and_accessibility": {
+    "data_testid_rule": "MUST include data-testid attribute on all interactive elements (buttons, links, inputs, selects, modals, tabs) in kebab-case format (e.g., data-testid='crm-add-lead-button').",
+    "file_extension": "Target React components use .js extensions.",
+    "toast_notification": "Use sonner for user feedback toasts."
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Ensure all text, labels, messages, buttons, and placeholders are in Brazilian Portuguese (pt-BR).",
+    "Use primary color #EB7300 for active CTAs and high-priority action buttons.",
+    "Maintain contrast compliance: use light text on #001524 navy backgrounds and dark text on light elements.",
+    "Provide clear micro-interactions, hover states, and smooth motion using Framer Motion.",
+    "Ensure interactive modals and dropdowns have explicit opaque background colors to prevent transparent bleeding.",
+    "All interactive elements MUST feature data-testid attributes."
+  ]
+}
