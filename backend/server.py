@@ -15,7 +15,7 @@ import hmac
 from zoneinfo import ZoneInfo
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Body, Response, Request, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from pymongo import ASCENDING, DESCENDING, IndexModel, ReturnDocument
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
@@ -133,6 +133,11 @@ class ClientIn(BaseModel):
     name: str = Field(min_length=1)
     company: str = ""
     email: str = ""
+
+    @field_validator("email")
+    @classmethod
+    def _norm_email(cls, v: str) -> str:
+        return ", ".join(e.lower() for e in re.split(r"[,;\s]+", v or "") if e)
     phone: str = ""
     document: str = ""
     segment: str = ""
@@ -558,14 +563,32 @@ async def list_files(client_id: Optional[str] = None, member: dict = Depends(req
     return await db.files.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 
+def email_match(email: str) -> dict:
+    # Matches a client whose email field contains this address (any case, spaces, or a comma/semicolon list).
+    return {"$regex": rf"(^|[\s,;]){re.escape(email.strip())}($|[\s,;])", "$options": "i"}
+
+
 async def _portal_client_id(member: dict) -> str:
-    if member.get("client_id"):
+    if member.get("client_id") and await db.clients.find_one({"id": member["client_id"]}, {"id": 1}):
         return member["client_id"]
     if member.get("email"):
-        c = await db.clients.find_one({"email": {"$regex": f"^{re.escape(member['email'])}$", "$options": "i"}}, {"id": 1})
+        c = await db.clients.find_one({"email": email_match(member["email"])}, {"id": 1})
         if c:
+            if member.get("user_id") and member.get("role") == "cliente":
+                await db.users.update_one({"user_id": member["user_id"]}, {"$set": {"client_id": c["id"]}})
             return c["id"]
     return ""
+
+
+@api_router.get("/clients/{client_id}/portal-access")
+async def client_portal_access(client_id: str, member: dict = Depends(require_role(*MANAGERS))):
+    c = await db.clients.find_one({"id": client_id}, {"_id": 0, "email": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    emails = [e.strip().lower() for e in re.split(r"[,;\s]+", c.get("email") or "") if e.strip()]
+    query = {"$or": [{"client_id": client_id}] + ([{"email": {"$in": emails}, "client_id": {"$in": ["", None]}}] if emails else [])}
+    users = await db.users.find({**query, **IN_ENV}, {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1}).to_list(50)
+    return {"users": [{**u, "role": effective_role(u.get("role"))} for u in users]}
 
 
 @api_router.get("/files/{file_id}/download")
@@ -599,7 +622,7 @@ async def portal(client_id: Optional[str] = None, member: dict = Depends(current
     if member["role"] in STAFF and not cid:
         return {"client": None, "staff": True}
     if not cid:
-        return {"client": None, "staff": False}
+        return {"client": None, "staff": False, "email": member.get("email", "")}
     c = await db.clients.find_one({"id": cid}, {"_id": 0})
     if not c:
         return {"client": None, "staff": member["role"] in STAFF}

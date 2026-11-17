@@ -60,6 +60,20 @@ function FilesPanel({ clientId }) {
   );
 }
 
+function PortalAccess({ clientId, email }) {
+  const api = useApi();
+  const [users, setUsers] = useState(null);
+  useEffect(() => { api.get(`/clients/${clientId}/portal-access`).then((r) => setUsers(r.users)).catch(() => setUsers([])); }, [api, clientId, email]);
+  return (
+    <div className="border-t border-[#003459] pt-3" data-testid="client-portal-access">
+      <p className="text-xs uppercase tracking-wider text-slate-500">Acesso ao portal</p>
+      {users === null ? <p className="text-slate-500">...</p> : users.length ? users.map((u) => (
+        <p key={u.user_id} className="text-emerald-300" data-testid={`portal-access-user-${u.user_id}`}>✓ {u.email}</p>
+      )) : <p className="text-slate-400" data-testid="portal-access-none">{email ? `Liberado para ${email}. Assim que o cliente se cadastrar com este e-mail, ele verá o portal.` : "Cadastre o e-mail do cliente para liberar o portal."}</p>}
+    </div>
+  );
+}
+
 const List = ({ title, items, render, testid }) => (
   <Panel className="p-6" data-testid={testid}>
     <h2 className="font-semibold text-white">{title}</h2>
@@ -98,6 +112,7 @@ export default function ClientDetail() {
           {[["E-mail", c.email], ["Telefone", c.phone], ["Documento", c.document], ["Responsável", c.account_manager], ["Mensalidade", brl(c.monthly_fee)]].map(([l, v]) => (
             <div key={l}><p className="text-xs uppercase tracking-wider text-slate-500">{l}</p><p className="text-slate-200">{v || "—"}</p></div>
           ))}
+          {isManager(me) && <PortalAccess clientId={id} email={c.email} />}
           {c.notes && <p className="whitespace-pre-line border-t border-[#003459] pt-3 text-slate-400">{c.notes}</p>}
         </Panel>
         <div className="space-y-6 lg:col-span-2">

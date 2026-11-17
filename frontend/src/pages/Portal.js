@@ -90,6 +90,8 @@ export default function Portal() {
         <Star className="h-6 w-6" />
         <h1 className="font-display mt-6 text-3xl text-white">{d.staff ? "Pré-visualize o portal" : "Seu portal está quase pronto"}</h1>
         <p className="mt-4 text-slate-400">{d.staff ? "Escolha um cliente para ver o portal exatamente como ele vê." : "Ainda não encontramos uma conta de cliente vinculada ao seu e-mail. Fale com seu gerente de conta na Sparkle."}</p>
+        {!d.staff && d.email && <p className="mt-4 text-sm text-slate-300">Você entrou como <strong className="text-[#FFB703]" data-testid="portal-user-email">{d.email}</strong>. Peça à agência para cadastrar exatamente este e-mail no seu cadastro de cliente.</p>}
+        {!d.staff && <Button onClick={load} data-testid="portal-retry-button" className="mt-8 rounded-full bg-[#EB7300] hover:bg-[#D16600] text-white">Verificar novamente</Button>}
         {picker && <div className="mt-8">{picker}</div>}
       </div>
     </div>
