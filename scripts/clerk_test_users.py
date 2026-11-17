@@ -1,4 +1,4 @@
-import os, json, sys, urllib.request, urllib.error
+import os, json, sys, urllib.request, urllib.error, urllib.parse
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -13,7 +13,7 @@ def bapi(path, body=None, method="POST"):
 
 
 def get_user(email, first):
-    found = bapi(f"/users?email_address={email}", method="GET")
+    found = bapi("/users?email_address=" + urllib.parse.quote(email), method="GET")
     if found:
         return found[0]
     return bapi("/users", {"email_address": [email], "password": "Sparkle-test-2026!", "first_name": first, "skip_password_checks": True})

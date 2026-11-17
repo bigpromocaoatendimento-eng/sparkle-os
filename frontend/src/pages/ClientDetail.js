@@ -37,7 +37,7 @@ function FilesPanel({ clientId }) {
     try { await api.post("/files", fd); toast.success("Arquivo enviado"); load(); } catch (err) { toast.error(errMsg(err)); }
     finally { setBusy(false); e.target.value = ""; }
   };
-  const remove = async (f) => { await api.del(`/files/${f.id}`); load(); };
+  const remove = async (f) => { if (window.confirm("Remover arquivo?")) { await api.del(`/files/${f.id}`); load(); } };
   return (
     <Panel className="p-6" data-testid="client-files-panel">
       <div className="flex items-center justify-between"><h2 className="font-semibold text-white">Arquivos</h2>
@@ -50,7 +50,7 @@ function FilesPanel({ clientId }) {
           <div key={f.id} className="flex items-center gap-3 py-3" data-testid={`client-file-${f.id}`}>
             <FileText className="h-4 w-4 text-[#94BAC4]" />
             <span className="flex-1 truncate text-sm text-slate-200">{f.original_filename}</span>
-            <span className="text-xs text-slate-500">{(f.size / 1024).toFixed(0)} KB</span>
+            <span className="text-xs text-slate-500">{f.size < 1024 ? `${f.size} B` : `${(f.size / 1024).toFixed(0)} KB`}</span>
             <button onClick={() => downloadFile(api, f)} className="p-1.5 text-slate-400 hover:text-white" data-testid={`client-file-download-${f.id}`}><Download className="h-4 w-4" /></button>
             {isManager(me) && <button onClick={() => remove(f)} className="p-1.5 text-slate-400 hover:text-red-400" data-testid={`client-file-delete-${f.id}`}><Trash2 className="h-4 w-4" /></button>}
           </div>

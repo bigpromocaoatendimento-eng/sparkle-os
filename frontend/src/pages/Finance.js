@@ -7,7 +7,9 @@ import { brl, fmtDate, LABELS, opts, txStatus, today } from "@/lib/format";
 import { PageHeader, Panel, StatusBadge, Empty } from "@/components/sparkle/PageHeader";
 import { FormDialog } from "@/components/sparkle/FormDialog";
 import { Button } from "@/components/ui/button";
+import { ManagerOnly } from "@/components/sparkle/ManagerOnly";
 
+const monthLabel = (m) => new Date(`${m}-15`).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 const TABS = [["receber", "Contas a receber"], ["pagar", "Contas a pagar"], ["fluxo", "Fluxo de caixa"]];
 
 function CashFlow({ items }) {
@@ -26,7 +28,7 @@ function CashFlow({ items }) {
       <div className="h-80"><ResponsiveContainer>
         <BarChart data={data}>
           <CartesianGrid stroke="#003459" strokeDasharray="3 3" />
-          <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
+          <XAxis dataKey="month" tickFormatter={monthLabel} stroke="#64748b" fontSize={12} />
           <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => `${v / 1000}k`} />
           <Tooltip contentStyle={{ background: "#002138", border: "1px solid #003459", borderRadius: 12 }} formatter={(v) => brl(v)} />
           <Legend />
@@ -35,19 +37,23 @@ function CashFlow({ items }) {
         </BarChart>
       </ResponsiveContainer></div>
       <div className="mt-4 divide-y divide-[#003459] text-sm">
-        {data.map((d) => <div key={d.month} className="flex justify-between py-2"><span className="text-slate-400">{d.month}</span><span className={d.saldo >= 0 ? "text-emerald-300" : "text-red-300"}>{brl(d.saldo)}</span></div>)}
+        {data.map((d) => <div key={d.month} className="flex justify-between py-2"><span className="text-slate-400">{monthLabel(d.month)}</span><span className={d.saldo >= 0 ? "text-emerald-300" : "text-red-300"}>{brl(d.saldo)}</span></div>)}
       </div>
     </Panel>
   );
 }
 
-export default function Finance() {
+export default function FinanceGuarded() {
+  return <ManagerOnly><Finance /></ManagerOnly>;
+}
+
+function Finance() {
   const api = useApi();
   const [items, setItems] = useState([]);
   const [clients, setClients] = useState([]);
   const [tab, setTab] = useState("receber");
   const [edit, setEdit] = useState(null);
-  const load = useCallback(() => { api.get("/transactions").then(setItems); api.get("/clients").then(setClients); }, [api]);
+  const load = useCallback(() => { api.get("/transactions").then(setItems).catch(() => {}); api.get("/clients").then(setClients).catch(() => {}); }, [api]);
   useEffect(() => { load(); }, [load]);
   const cname = Object.fromEntries(clients.map((c) => [c.id, c.name]));
   const rows = items.filter((t) => t.type === tab).sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));

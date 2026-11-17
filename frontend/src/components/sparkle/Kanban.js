@@ -21,7 +21,7 @@ export function Kanban({ stages, items, onMove, renderCard, prefix, accent = {} 
             onDragOver={(e) => { e.preventDefault(); setOver(s); }}
             onDragLeave={() => setOver(null)}
             onDrop={(e) => drop(e, s)}
-            className={`min-w-[270px] w-[270px] shrink-0 rounded-2xl border p-3 transition-colors duration-200 ${over === s ? "border-[#EB7300] bg-[#EB7300]/5" : "border-[#003459] bg-[#002138]/60"}`}
+            className={`min-w-[230px] flex-1 shrink-0 rounded-2xl border p-3 transition-colors duration-200 ${over === s ? "border-[#EB7300] bg-[#EB7300]/5" : "border-[#003459] bg-[#002138]/60"}`}
           >
             <div className="flex items-center justify-between px-1 pb-3">
               <span className="flex items-center gap-2 text-sm font-semibold text-slate-200">

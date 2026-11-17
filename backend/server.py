@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import os
+import re
 import uuid
+from urllib.parse import quote
 from contextlib import suppress
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
@@ -181,7 +183,6 @@ class TaskIn(BaseModel):
     priority: str = "media"
     assignee: str = ""
     due_date: str = ""
-    feedback: List[dict] = []
 
 
 def register_crud(name: str, model, read_roles, write_roles, delete_roles):
@@ -193,6 +194,8 @@ def register_crud(name: str, model, read_roles, write_roles, delete_roles):
     @api_router.post(f"/{name}", name=f"create_{name}")
     async def create_item(body: model, member: dict = Depends(require_role(*write_roles))):
         doc = {**body.model_dump(), "id": str(uuid.uuid4()), "created_at": now_iso(), "created_by": member["user_id"]}
+        if name == "tasks":
+            doc["feedback"] = []
         await db[name].insert_one(doc)
         doc.pop("_id", None)
         return doc
@@ -211,6 +214,10 @@ def register_crud(name: str, model, read_roles, write_roles, delete_roles):
 
     @api_router.delete(f"/{name}/{{item_id}}", name=f"delete_{name}")
     async def delete_item(item_id: str, member: dict = Depends(require_role(*delete_roles))):
+        if name == "clients":
+            for coll in ("contracts", "transactions", "tasks"):
+                if await db[coll].count_documents({"client_id": item_id}, limit=1):
+                    raise HTTPException(status_code=409, detail="Cliente possui contratos, lançamentos ou tarefas vinculados. Marque-o como inativo.")
         if (await db[name].delete_one({"id": item_id})).deleted_count == 0:
             raise HTTPException(status_code=404, detail="Não encontrado")
         return {"ok": True}
@@ -378,7 +385,7 @@ async def _portal_client_id(member: dict) -> str:
     if member.get("client_id"):
         return member["client_id"]
     if member.get("email"):
-        c = await db.clients.find_one({"email": {"$regex": f"^{member['email']}$", "$options": "i"}}, {"id": 1})
+        c = await db.clients.find_one({"email": {"$regex": f"^{re.escape(member['email'])}$", "$options": "i"}}, {"id": 1})
         if c:
             return c["id"]
     return ""
@@ -395,7 +402,9 @@ async def download_file(file_id: str, member: dict = Depends(current_member)):
             raise HTTPException(status_code=404, detail="Arquivo não encontrado")
     data, ctype = await run_in_threadpool(get_object, record["storage_path"])
     return Response(content=data, media_type=record.get("content_type") or ctype,
-                    headers={"Content-Disposition": f'inline; filename="{record["original_filename"]}"'})
+                    headers={"Content-Disposition": "inline; filename=\"{}\"; filename*=UTF-8''{}".format(
+                        record["original_filename"].encode("ascii", "replace").decode().replace('"', "'"),
+                        quote(record["original_filename"]))})
 
 
 @api_router.delete("/files/{file_id}")
@@ -418,8 +427,9 @@ async def portal(client_id: Optional[str] = None, member: dict = Depends(current
     if not c:
         return {"client": None, "staff": member["role"] in STAFF}
     tasks = await db.tasks.find({"client_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    contracts = await db.contracts.find({"client_id": cid}, {"_id": 0, "notes": 0}).to_list(200)
-    invoices = await db.transactions.find({"client_id": cid, "type": "receber"}, {"_id": 0}).sort("due_date", -1).to_list(500)
+    see_money = member["role"] in MANAGERS or member["role"] not in STAFF
+    contracts = await db.contracts.find({"client_id": cid}, {"_id": 0, "notes": 0}).to_list(200) if see_money else []
+    invoices = await db.transactions.find({"client_id": cid, "type": "receber"}, {"_id": 0}).sort("due_date", -1).to_list(500) if see_money else []
     for inv in invoices:
         inv["status"] = _effective_status(inv)
     files = await db.files.find({"client_id": cid, "is_deleted": False}, {"_id": 0, "storage_path": 0}).to_list(500)

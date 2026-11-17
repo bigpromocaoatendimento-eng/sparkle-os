@@ -1,0 +1,54 @@
+{
+  "summary": "First full e2e run of Sparkle OS. Backend: 28 pytest tests covering roles/401/403, CRUD for clients/services/contracts/transactions/leads/tasks, dashboard KPIs, public services + contact->lead, portal approve/request-changes + isolation, object-storage upload/download + cross-client 404, users role/link + last-admin 409. 26/28 pass. Frontend (Playwright, Clerk ticket sign-in): public site + contact form -> lead shown in CRM 'Novo lead'; admin dashboard KPIs, clients create/search, client detail upload+download, services/contracts/finance create, mark paid, finance tabs; CRM create/edit stage/HTML5 drag-drop/convert -> client created & lead in Ganho; tasks create + stage aprovacao; cliente portal approve -> concluido, request-changes (empty comment rejected w/ toast) -> criacao; cliente /app -> /portal redirect; staff portal picker; users role change + client link select. All pass. Found 3 real bugs (1 security/permission leak, 1 500 error, 1 unguarded route with unhandled rejections).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/portal?client_id=X (as criativo)", "issue": "Permission leak: criativo is 403 on /api/transactions and /api/contracts, but the staff portal-preview returns any client's invoices (amounts/status) and contracts. Confirmed in API and UI (criativo picks Clínica Vitalis in portal-client-picker and sees Faturas). Fix: in portal(), when member.role=='criativo' drop invoices/contracts (or restrict preview to MANAGERS).", "priority": "HIGH"},
+      {"endpoint": "GET /api/files/{id}/download", "issue": "500 UnicodeEncodeError ('latin-1' codec can't encode '\\u2014') when original_filename has non-latin-1 chars (e.g. em-dash, emoji, CJK). Content-Disposition header built with raw filename. Fix: use RFC 5987: filename*=UTF-8''{urllib.parse.quote(name)} plus an ASCII fallback filename.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "_portal_client_id", "issue": "Email used unescaped inside $regex (^email$). '+' and '.' are regex metachars -> emails like contato+x@... never auto-match a client; use re.escape(member['email'])."},
+      {"endpoint": "PATCH /api/tasks/{id}", "issue": "TaskIn includes 'feedback' so any staff PATCH can overwrite/erase client approval history; exclude feedback from writable fields."},
+      {"endpoint": "DELETE /api/clients/{id}", "issue": "No cascade/guard: tasks, transactions, contracts, files stay orphaned with dangling client_id."},
+      {"endpoint": "Crm convert (POST /clients + PATCH lead)", "issue": "Not idempotent; converting an already 'ganho' lead (or double-click) creates duplicate clients. Consider a backend /leads/{id}/convert endpoint that checks stage."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Finance/Contracts pages (route guard)", "issue": "criativo navigating directly to /app/financeiro (and /app/contratos) renders the page; API returns 403 and load() has no .catch -> 'Unhandled rejection: Request failed with status code 403' overlay; page shows R$0,00 and an enabled 'Novo lançamento' button. Add role guard (redirect / Empty state like users-forbidden) and .catch on loads.", "selector": "/app/financeiro", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sign-in / Sign-up (Clerk)", "issues": ["Clerk widget in English ('Continue to Sparkle OS', 'Email address') while app is pt-BR; add @clerk/localizations ptBR."]},
+      {"screen": "Forms (tasks, finance, contracts)", "issues": ["Date fields use native browser date picker (type=date) instead of shadcn Calendar/Popover; selects are native <select> too."]},
+      {"screen": "Finance > Fluxo de caixa", "issues": ["Month labels shown raw ('2026-10') while dashboard uses localized 'out.'; inconsistent."]},
+      {"screen": "Client detail files", "issues": ["Small files show '0 KB'; show bytes or '<1 KB'."]},
+      {"screen": "Kanban (desktop 1920)", "issues": ["5th column (Concluído/Perdido) clipped at right edge, needs horizontal scroll; consider narrower columns or fluid widths."]},
+      {"screen": "Public site", "issues": ["Contact phone is placeholder '(00) 00000-0000'.", "Mobile header has no nav menu (only 'Acessar Sparkle OS')."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_sparkle_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Restrict invoices/contracts in GET /api/portal for criativo (finance leak)",
+    "Fix Content-Disposition for non-latin-1 filenames in /api/files/{id}/download (500)",
+    "Add role guards + .catch error handling for /app/financeiro and /app/contratos when role=criativo",
+    "re.escape email in _portal_client_id regex",
+    "Make task 'feedback' non-writable via PATCH /api/tasks",
+    "Localize Clerk components to pt-BR; replace native date inputs with shadcn Calendar"
+  ],
+  "critical_code_review_comments": [
+    "server.py portal(): staff branch exposes finance data to criativo, bypassing MANAGERS restriction on /transactions & /contracts",
+    "server.py download_file(): raw filename in header -> UnicodeEncodeError 500",
+    "server.py _portal_client_id(): unescaped regex with user email",
+    "register_crud PATCH accepts Body(dict) and validates via model -> ok, but TaskIn.feedback is writable",
+    "Frontend pages call api.get(...).then(set) without .catch in most loads (Finance, Contracts, Tasks, Crm, ClientDetail) -> any 4xx/5xx yields unhandled rejection overlay",
+    "scripts/clerk_test_users.py: email with '+' was not URL-encoded in Clerk lookup query -> 422 'email taken' on re-run (FIXED by tester with urllib.parse.quote)"
+  ],
+  "updated_files": ["/app/scripts/clerk_test_users.py (URL-encode email in lookup)", "/app/backend/tests/test_sparkle_api.py"],
+  "success_rate": {"backend": "93% (26/28)", "frontend": "92% (all requested flows pass; 1 route-guard bug for criativo)"},
+  "test_credentials": "From /app/memory/test_credentials.md; tickets are SINGLE-USE - rerun scripts/clerk_test_users.py before each browser session.",
+  "seed_data_creation": "None. All TEST_ records created were deleted by id/exact name. Seed data untouched except: criativo role toggled gerente->criativo (restored); cliente link set to Café Aurora (unchanged). Pre-existing file 't.txt' on Café Aurora and real user 'Allan Braga' left untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `cd /app && python scripts/clerk_test_users.py` first (fresh 1h JWTs + single-use tickets in /tmp/clerk_tokens.json). Browser: goto /sign-in?__clerk_ticket=<ticket>, wait_for_url('**/app'). Run backend suite: `cd /app/backend && python -m pytest tests/test_sparkle_api.py -n 0`. The 2 failing tests (test_criativo_portal_invoice_leak, test_unicode_filename_download) should pass once fixed. Only one admin exists in preview env so last-admin 409 test runs. Server clock is Nov 2026.",
+  "rca of the issue": "1) Finance leak: portal() uses `member.role in STAFF` to allow arbitrary client_id preview and always returns invoices/contracts. Repro: as criativo GET /api/portal?client_id=<Vitalis id> -> invoices list. 2) Download 500: Starlette encodes headers latin-1; filename 'TEST_relatório—final.txt' contains U+2014. Repro: upload such file, GET download -> 500 (backend.err.log UnicodeEncodeError). 3) Route guard: AppShell only redirects non-staff; Finance.js/Contracts.js have no manager check and no catch."
+}

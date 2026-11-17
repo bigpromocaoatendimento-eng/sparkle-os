@@ -59,7 +59,7 @@ export default function Crm() {
       )} />
       <FormDialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)} title={edit?.id ? "Editar lead" : "Novo lead"} fields={FIELDS} initial={edit} onSubmit={save} prefix="lead-form" extra={edit?.id && (
         <div className="flex flex-wrap gap-2 border-t border-[#003459] pt-4">
-          <Button type="button" size="sm" onClick={() => convert(edit)} data-testid="lead-convert-button" className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white"><UserPlus className="h-4 w-4 mr-1" /> Converter em cliente</Button>
+          {edit.stage !== "ganho" && <Button type="button" size="sm" onClick={() => convert(edit)} data-testid="lead-convert-button" className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white"><UserPlus className="h-4 w-4 mr-1" /> Converter em cliente</Button>}
           {isManager(me) && <Button type="button" size="sm" variant="ghost" onClick={() => remove(edit)} data-testid="lead-delete-button" className="rounded-full text-red-300">Excluir</Button>}
         </div>
       )} />

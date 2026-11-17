@@ -30,7 +30,7 @@ export default function Clients() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [edit, setEdit] = useState(null);
-  const load = useCallback(() => api.get("/clients").then(setItems), [api]);
+  const load = useCallback(() => api.get("/clients").then(setItems).catch(() => {}), [api]);
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => items.filter((c) =>

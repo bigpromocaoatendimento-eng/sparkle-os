@@ -6,13 +6,18 @@ import { brl, fmtDate, LABELS, opts } from "@/lib/format";
 import { PageHeader, Panel, StatusBadge, Empty } from "@/components/sparkle/PageHeader";
 import { FormDialog } from "@/components/sparkle/FormDialog";
 import { Button } from "@/components/ui/button";
+import { ManagerOnly } from "@/components/sparkle/ManagerOnly";
 
-export default function Contracts() {
+export default function ContractsGuarded() {
+  return <ManagerOnly><Contracts /></ManagerOnly>;
+}
+
+function Contracts() {
   const api = useApi();
   const [items, setItems] = useState([]);
   const [clients, setClients] = useState([]);
   const [edit, setEdit] = useState(null);
-  const load = useCallback(() => { api.get("/contracts").then(setItems); api.get("/clients").then(setClients); }, [api]);
+  const load = useCallback(() => { api.get("/contracts").then(setItems).catch(() => {}); api.get("/clients").then(setClients).catch(() => {}); }, [api]);
   useEffect(() => { load(); }, [load]);
   const cname = useMemo(() => Object.fromEntries(clients.map((c) => [c.id, c.name])), [clients]);
   const fields = [
